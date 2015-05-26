@@ -98,7 +98,7 @@ British Spreadsheet--Jennie.xlsx (many columns after primary authors blank)
 
 def british_jennie(row):
     return [
-        "britishj",     # collection
+        "british",     # collection
       	row[1].value,  # filename
         row[2].value,  # page numbers
         row[3].value,  # pages in document

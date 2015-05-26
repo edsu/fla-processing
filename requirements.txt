@@ -1,0 +1,5 @@
+pillow
+cython
+openpyxl
+unicodecsv
+wikidata_suggest
