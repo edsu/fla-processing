@@ -23,3 +23,11 @@ create the static site with:
 If you want to run the entire workflow run:
 
     make
+
+When the build is complete you should see a directory structure like:
+
+    /data/fla/{collection}/index.html
+    /data/fla/{collection}/{author}/index.html
+    /data/fla/{collection}/{author}/image.jpg
+    /data/fla/{collection}/{author}/{title}/index.html
+    /data/fla/{collection}/{author}/{title}/01.tif

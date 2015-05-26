@@ -37,27 +37,30 @@ def main(in_csv, authors_json, output_dir, input_dirs):
         header = reader.next()
 
         for row in reader:
+            collection = row[0]
+
             orig_id = row[1]
             article_id, page_id = get_article_page_ids(orig_id)
 
-            row[1] = article_id
-
-            author = slug(row[16].split(' ; ')[0])
-            wikidata_id = authors.get(author)
+            author = row[16].split(' ; ')[0]
+            author_slug = slug(author)
 
             if not author:
                 logging.error("no author for %s", orig_id)
                 continue
+
+            author_dir = os.path.join(output_dir, collection, author_slug)
+            if not os.path.isdir(author_dir):
+                wikidata_id = authors.get(author)
+                write_author(author, wikidata_id, author_dir)
 
             title = slug(row[4])
             if not title:
                 logging.error("no title for %s", orig_id)
                 continue
 
-            article_dir = os.path.join(output_dir, row[0], author, title)
+            article_dir = os.path.join(author_dir, title)
             if not os.path.isdir(article_dir):
-                logging.info("making article directory: %s", article_dir)
-                os.makedirs(article_dir)
                 write_article(row, article_dir)
 
             img_path = file_index.get(page_id)
@@ -67,8 +70,23 @@ def main(in_csv, authors_json, output_dir, input_dirs):
             else:
                 write_image(img_path, article_dir)
 
+def write_author(author, wikidata_id, author_dir):
+    logging.info("making author directory: %s", author_dir)
+    os.makedirs(author_dir)
+    html_file = os.path.join(author_dir, 'index.html')
+    front_matter = [\
+        "---",
+        "layout: author",
+        "name: %s"                  % author,
+        "wikidata: %s"              % wikidata_id,
+        "---"
+    ]
+    open(html_file, 'wb').write('\n'.join(front_matter).encode('utf8'))
+     
 
 def write_article(row, article_dir):
+    logging.info("making article directory: %s", article_dir)
+    os.makedirs(article_dir)
     html_file = os.path.join(article_dir, 'index.html')
     author = row[8].strip()
     if author == "--":
@@ -154,10 +172,20 @@ def get_article_page_ids(s):
 
 
 def write_image(img_path, article_dir):
-    logging.info("copying image %s to %s", img_path, article_dir)
+    logging.info("placing image %s in %s", img_path, article_dir)
     prefix, ext = os.path.splitext(os.path.basename(img_path).lower())
-    prefix = prefix.split("-")[-1]
-    prefix = re.sub('^0+', '', prefix)
+
+    m = re.match('.+-([0-9]+)(a|b)?$', prefix)
+    if not m:
+        logging.error("unknown page filename format: %s", img_path)
+        return
+
+    if m.group(2) == 'b':
+        logging.error("ignoring B images")
+        return
+
+    prefix = "%02i" % int(m.group(1))
+
     dest = os.path.join(article_dir, prefix + '.tif')
     delete_after = False
 
