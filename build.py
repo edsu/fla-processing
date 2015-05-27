@@ -214,7 +214,7 @@ def article_path(bag_dir, collection, author, title):
 
 
 def jpg2tif(jpg_file):
-    logging.info("converting %s to tif", img_path)
+    logging.info("converting %s to tif", jpg_file)
     i = Image.open(jpg_file)
     fh, tif_file = tempfile.mkstemp()
     i.save(tif_file, format='tiff')
