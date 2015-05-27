@@ -15,12 +15,14 @@ from PIL import Image
 
 """
 This script builds a directory location of canonicalized FLA data that 
-is used to build the static site. It is a bootstrapping program to 
-get the data into a jeklyll static site structure where it can be 
-maintained from then on. It is not meant to be run repetitively.
+is used to build the static site. It is a throw away bootstrapping program 
+to get the data into an initial jeklyll static site structure where it can 
+be maintained from then on. It is not meant to be run repetitively as part
+of a curation workflow.
 """
 
 logging.basicConfig(filename="build.log", level=logging.INFO)
+
 
 def main(in_csv, authors_json, output_dir, input_dirs):
 
@@ -28,49 +30,39 @@ def main(in_csv, authors_json, output_dir, input_dirs):
         logging.info("making directory %s", output_dir)
         os.makedirs(output_dir)
 
+    # this contains a simple mapping of authors names to wikidata ids
     authors = json.load(open(authors_json))
 
-    file_index = make_file_index(input_dirs)
+    # keep track of clippings seen
+    clipping_index = {}
+
+    # keep track of page images
+    page_index = make_page_index(input_dirs)
 
     with open(in_csv, 'rb') as csvfile:
         reader = unicodecsv.reader(csvfile)
         header = reader.next()
-
         for row in reader:
-            collection = row[0]
+            logging.info("processing %s", row[1])
+            for a in row[16].split(' ; '):
+                write_author(output_dir, a, authors.get(a))
 
-            orig_id = row[1]
-            article_id, page_id = get_article_page_ids(orig_id)
-
-            author = row[16].split(' ; ')[0]
-            author_slug = slug(author)
-
-            if not author:
-                logging.error("no author for %s", orig_id)
+            clipping_dir = get_clipping_dir(output_dir, row, clipping_index)
+            if not clipping_dir:
+                logging.error("couldn't determine clipping directory for %s", row[1])
                 continue
-
-            author_dir = os.path.join(output_dir, collection, author_slug)
-            if not os.path.isdir(author_dir):
-                wikidata_id = authors.get(author)
-                write_author(author, wikidata_id, author_dir)
-
-            title = slug(row[4])
-            if not title:
-                logging.error("no title for %s", orig_id)
-                continue
-
-            article_dir = os.path.join(author_dir, title)
-            if not os.path.isdir(article_dir):
-                write_article(row, article_dir)
-
-            img_path = file_index.get(page_id)
+            
+            img_path = page_index.get(get_page_id(row[1]))
             if not img_path:
-                logging.error("unable to find image for %s", orig_id)
+                logging.error("couldn't find image for %s", row[1])
                 continue
-            else:
-                write_image(img_path, article_dir)
+            write_image(img_path, clipping_dir)
 
-def write_author(author, wikidata_id, author_dir):
+
+def write_author(output_dir, author, wikidata_id):
+    author_dir = os.path.join(output_dir, '_authors', slug(author))
+    if os.path.isdir(author_dir):
+        return
     logging.info("making author directory: %s", author_dir)
     os.makedirs(author_dir)
     html_file = os.path.join(author_dir, 'index.html')
@@ -84,10 +76,9 @@ def write_author(author, wikidata_id, author_dir):
     open(html_file, 'wb').write('\n'.join(front_matter).encode('utf8'))
      
 
-def write_article(row, article_dir):
-    logging.info("making article directory: %s", article_dir)
-    os.makedirs(article_dir)
-    html_file = os.path.join(article_dir, 'index.html')
+def write_clipping_info(row, clipping_dir):
+    os.makedirs(clipping_dir)
+    html_file = os.path.join(clipping_dir, 'index.html')
     author = row[8].strip()
     if author == "--":
         author = ""
@@ -96,7 +87,7 @@ def write_article(row, article_dir):
     subjects = "\n".join(["    - " + s for s in subjects])
     front_matter = [\
         "---",
-        "layout: article",
+        "layout: clipping",
         "title: %s"                 % row[4],
         "author: %s"                % author,
         "publication: %s"           % row[9],
@@ -107,13 +98,47 @@ def write_article(row, article_dir):
         "publisher: %s"             % row[14],
         "place_of_publication: %s"  % row[15],
         "subjects:",                  subjects,
+        "collection: %s"            % row[0],
         "creator: %s"               % creator,
         "---"
     ]
     open(html_file, 'wb').write('\n'.join(front_matter).encode('utf8'))
+    return clipping_dir
 
 
-def make_file_index(input_dirs):
+def get_clipping_dir(output_dir, row, clipping_index):
+    """
+    A complicated function that returns the next numeric clipping directory
+    to use. The clipping directories are a simple numbered sequence. If the
+    clipping directory already exists for the supplied row in the clipping
+    index it is returned immediately.
+    """
+    clipping_id = get_clipping_id(row[1])
+    if clipping_id in clipping_index:
+        return clipping_index[clipping_id]
+
+    clippings_dir = os.path.join(output_dir, "_clippings")
+    if not os.path.isdir(clippings_dir):
+        os.makedirs(clippings_dir)
+
+    # deterrmine the next in the sequence
+    r = re.compile('^[0-9]+$')
+    existing = map(int, filter(r.match, os.listdir(clippings_dir)))
+    existing.sort()
+    if len(existing) == 0:
+        num = 1
+    else:
+        num = int(existing[-1]) + 1
+
+    clipping_dir = os.path.join(output_dir, "_clippings", "%05i" % num)
+    logging.info("making clipping directory %s", clipping_dir)
+    write_clipping_info(row, clipping_dir)
+    clipping_index[clipping_id] = clipping_dir
+
+    return clipping_dir
+
+
+def make_page_index(input_dirs):
     """
     Build an index of page_ids to file paths to images. Give 
     preference to TIFF files, but record JPEG and DJVU files
@@ -123,15 +148,15 @@ def make_file_index(input_dirs):
     for dir in input_dirs:
         for dirpath, dirnames, filenames in os.walk(dir):
             for filename in filenames:
-                article_id = get_page_id(filename)
-                if article_id:
+                clipping_id = get_page_id(filename)
+                if clipping_id:
                     # don't overwrite our path if we have a tiff already
-                    path = index.get(article_id, "")
+                    path = index.get(clipping_id, "")
                     if path:
                         prefix, ext = os.path.splitext(path)
                         if ext.lower() in ['tif', 'tiff']:
                             continue
-                    index[article_id] = os.path.join(dirpath, filename)
+                    index[clipping_id] = os.path.join(dirpath, filename)
     return index
 
 
@@ -145,36 +170,18 @@ def get_page_id(s):
     if parts[0] != "fla":
         return None
     return "-".join(parts)
+    
 
-    m = re.match(r'^(.+)\.(.+)$', s)
-    if not m:
-        return None
-
-    prefix, ext = m.groups()
-    if ext.lower() not in ['tif', 'tiff', 'djvu']:
-        return None
-
-    prefix = prefix.replace('.', '-')
-    parts = prefix.split('-')
-    if len(parts) != 5:
-        return None
-
-    # remove pages sequence
+def get_clipping_id(s):
+    parts = get_page_id(s).split('-')
     parts.pop()
-
-    return "-".join(parts)
-
-
-def get_article_page_ids(s):
-    page_id = get_page_id(s)
-    parts = page_id.split('-')
-    return '-'.join(parts[0:-1]), page_id
+    return '-'.join(parts)
 
 
-def write_image(img_path, article_dir):
-    logging.info("placing image %s in %s", img_path, article_dir)
+def write_image(img_path, clipping_dir):
+    logging.info("placing image %s in %s", img_path, clipping_dir)
+
     prefix, ext = os.path.splitext(os.path.basename(img_path).lower())
-
     m = re.match('.+-([0-9]+)(a|b)?$', prefix)
     if not m:
         logging.error("unknown page filename format: %s", img_path)
@@ -183,10 +190,9 @@ def write_image(img_path, article_dir):
     if m.group(2) == 'b':
         logging.error("ignoring B images")
         return
+    prefix = "%03i" % int(m.group(1))
+    dest = os.path.join(clipping_dir, prefix + '.tif')
 
-    prefix = "%02i" % int(m.group(1))
-
-    dest = os.path.join(article_dir, prefix + '.tif')
     delete_after = False
 
     if ext == '.jpg' or ext == 'jpeg':
@@ -208,26 +214,26 @@ def write_image(img_path, article_dir):
         logging.info("deleting temp file %s", src)
         os.remove(src)
 
-
-def article_path(bag_dir, collection, author, title):
-    return os.path.join(bag_dir, slug(collection), slug(author), slug(title))
+    return dest
 
 
 def jpg2tif(jpg_file):
     logging.info("converting %s to tif", jpg_file)
     i = Image.open(jpg_file)
-    fh, tif_file = tempfile.mkstemp()
+    fd, tif_file = tempfile.mkstemp()
     i.save(tif_file, format='tiff')
+    os.close(fd)
     return tif_file
 
 
 def djvu2tif(djvu_file):
     logging.info("converting %s to tif", img_path)
-    fh, tif_file = tempfile.mkstemp()
+    fd, tif_file = tempfile.mkstemp()
     rc = subprocess.call(["ddjvu", '-format=tiff', djvu_file, tif_file])
-    if rc == 0:
-        return tif_file
-    return None
+    if rc != 0:
+        return None
+    os.close(fd)
+    return tif_file
 
 
 def slug(s):
