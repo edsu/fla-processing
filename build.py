@@ -70,7 +70,8 @@ def write_author(output_dir, author, wikidata_id):
         "---",
         "layout: author",
         "name: %s"                  % author,
-        "wikidata: %s"              % wikidata_id,
+        "wikidata:",
+        "  id: %s"                  % wikidata_id,
         "---"
     ]
     open(html_file, 'wb').write('\n'.join(front_matter).encode('utf8'))
