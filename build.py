@@ -5,6 +5,7 @@ import os
 import re
 import sys
 import json
+import yaml
 import shutil
 import logging
 import tempfile
@@ -51,7 +52,7 @@ def main(in_csv, authors_json, output_dir, input_dirs):
             if not clipping_dir:
                 logging.error("couldn't determine clipping directory for %s", row[1])
                 continue
-            
+
             img_path = page_index.get(get_page_id(row[1]))
             if not img_path:
                 logging.error("couldn't find image for %s", row[1])
@@ -66,15 +67,13 @@ def write_author(output_dir, author, wikidata_id):
     logging.info("making author directory: %s", author_dir)
     os.makedirs(author_dir)
     html_file = os.path.join(author_dir, 'index.html')
-    front_matter = [\
-        "---",
-        "layout: author",
-        "name: %s"                  % author,
-        "wikidata:",
-        "  id: %s"                  % wikidata_id,
-        "---"
-    ]
-    open(html_file, 'wb').write('\n'.join(front_matter).encode('utf8'))
+    front_matter = {
+        "layout":       "author",
+        "name":         author,
+        "wikidata":     {"id": wikidata_id}
+    }
+    front_matter = "---\n" + yaml.safe_dump(front_matter, indent=2) + "---\n"
+    open(html_file, 'wb').write(front_matter.encode('utf8'))
      
 
 def write_clipping_info(row, clipping_dir):
@@ -85,27 +84,26 @@ def write_clipping_info(row, clipping_dir):
         author = ""
     creator = row[1].split("-")[2]
     subjects = row[16].split(" ; ")
-    subjects = "\n".join(["    - " + s for s in subjects])
-    front_matter = [\
-        "---",
-        "layout: clipping",
-        "title: %s"                 % row[4],
-        "author: %s"                % author,
-        "publication: %s"           % row[9],
-        "volume: %s"                % row[10],
-        "issue: %s"                 % row[11],
-        "pages: %s"                 % row[3],
-        "year: %s"                  % row[13],
-        "publisher: %s"             % row[14],
-        "place_of_publication: %s"  % row[15],
-        "subjects:",                  subjects,
-        "collection: %s"            % row[0],
-        "creator: %s"               % creator,
-        "---"
-    ]
-    open(html_file, 'wb').write('\n'.join(front_matter).encode('utf8'))
+    front_matter = {
+        "layout":               "clipping",
+        "title":                row[4],
+        "author":               author,
+        "publication":          row[9],
+        "volume":               row[10],
+        "issue":                row[11],
+        "pages":                row[3],
+        "year":                 row[13],
+        "publisher":            row[14],
+        "place_of_publication": row[15],
+        "subjects":             subjects,
+        "collection":           row[0],
+        "creator":              creator,
+        "fla-id":               row[1],
+    }
+    front_matter = '---\n' + yaml.safe_dump(front_matter, indent=2) + '---\n'
+    open(html_file, 'wb').write(front_matter.encode('utf8'))
+    logging.info("wrote clipping info: %s", html_file)
     return clipping_dir
-
 
 def get_clipping_dir(output_dir, row, clipping_index):
     """
