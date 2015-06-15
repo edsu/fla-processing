@@ -11,6 +11,7 @@ import logging
 import tempfile
 import subprocess
 import unicodecsv
+import unicodedata
 
 from PIL import Image
 
@@ -61,7 +62,8 @@ def main(in_csv, authors_json, output_dir, input_dirs):
 
 
 def write_author(output_dir, author, wikidata_id):
-    author_dir = os.path.join(output_dir, '_authors', slug(author))
+    author_slug = slug(author)
+    author_dir = os.path.join(output_dir, '_authors', author_slug)
     if os.path.isdir(author_dir):
         return
     logging.info("making author directory: %s", author_dir)
@@ -69,8 +71,8 @@ def write_author(output_dir, author, wikidata_id):
     html_file = os.path.join(author_dir, 'index.html')
     front_matter = {
         "layout":       "author",
-        "name":         author,
-        "wikidata":     {"id": wikidata_id}
+        "slug":         author_slug,
+        "wikidata_id":  wikidata_id,
     }
     front_matter = "---\n" + yaml.safe_dump(front_matter, indent=2) + "---\n"
     open(html_file, 'wb').write(front_matter.encode('utf8'))
@@ -237,9 +239,10 @@ def djvu2tif(djvu_file):
 
 def slug(s):
     s = s.lower()
-    s = re.sub(r'[,;?.\'"]', '', s)
-    s = re.sub(r'[-:;]', ' ', s)
+    s = re.sub(r'[,;?.\"]', '', s)
+    s = re.sub(r'[\'-:;]', ' ', s)
     s = re.sub(' +', '-', s)
+    s = unicodedata.normalize('NFKD', s).encode('ascii', 'ignore')
     return s
 
 
