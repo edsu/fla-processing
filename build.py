@@ -49,6 +49,9 @@ def main(in_csv, authors_json, output_dir, input_dirs):
             for a in row[16].split(' ; '):
                 write_author(output_dir, a, authors.get(a))
 
+            # xxx: remove
+            continue
+
             clipping_dir = get_clipping_dir(output_dir, row, clipping_index)
             if not clipping_dir:
                 logging.error("couldn't determine clipping directory for %s", row[1])
@@ -71,6 +74,7 @@ def write_author(output_dir, author, wikidata_id):
     html_file = os.path.join(author_dir, 'index.html')
     front_matter = {
         "layout":       "author",
+        "name":         author,
         "slug":         author_slug,
         "wikidata_id":  wikidata_id,
     }
